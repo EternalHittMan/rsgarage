@@ -17,11 +17,14 @@ const chatOptions = [
 export default function ChatbotWidget() {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Desktop'ta ilk yüklemede otomatik aç (hydration-safe)
+  // Desktop'ta ilk yüklemede otomatik aç (hydration-safe + lint-safe)
   useEffect(() => {
-    if (window.innerWidth >= 1024) {
-      setIsOpen(true);
-    }
+    const raf = requestAnimationFrame(() => {
+      if (window.innerWidth >= 1024) {
+        setIsOpen(true);
+      }
+    });
+    return () => cancelAnimationFrame(raf);
   }, []);
   const [messages, setMessages] = useState<
     { from: "bot" | "user"; text: string }[]
