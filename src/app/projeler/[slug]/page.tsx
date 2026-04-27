@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
@@ -16,15 +17,93 @@ import {
   CheckCircle,
   Quote,
   ChevronRight,
+  Database,
+  Star,
+  Share2,
+  Bookmark,
+  Tag,
 } from "lucide-react";
-import { projects } from "@/data/projects";
+import {
+  getPost,
+  getPosts,
+  getCategories,
+  getTags,
+  isMockMode,
+  wpPostToProject,
+  formatPostDate,
+  getPostCategoryNames,
+  getPostTagNames,
+  type WP_Post,
+  type WP_Category,
+  type WP_Tag,
+} from "@/lib/blog-api";
 
 export default function ProjectDetailPage() {
   const params = useParams();
   const slug = params.slug as string;
-  const project = projects.find((p) => p.slug === slug);
 
-  if (!project) {
+  const [post, setPost] = useState<WP_Post | null>(null);
+  const [relatedPosts, setRelatedPosts] = useState<WP_Post[]>([]);
+  const [categories, setCategories] = useState<WP_Category[]>([]);
+  const [tags, setTags] = useState<WP_Tag[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    loadData();
+  }, [slug]);
+
+  async function loadData() {
+    setLoading(true);
+    setNotFound(false);
+
+    try {
+      const [postData, categoriesData, tagsData] = await Promise.all([
+        getPost(slug),
+        getCategories(),
+        getTags(),
+      ]);
+
+      if (!postData) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      setPost(postData);
+      setCategories(categoriesData);
+      setTags(tagsData);
+
+      // Load related posts (same category)
+      if (postData.categories.length > 0) {
+        const relatedResponse = await getPosts({
+          categories: [postData.categories[0]],
+          per_page: 3,
+        });
+        setRelatedPosts(
+          relatedResponse.data.filter((p) => p.id !== postData.id).slice(0, 3)
+        );
+      }
+    } catch (error) {
+      console.error("Error loading post:", error);
+      setNotFound(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black pt-[95px] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-gold/30 border-t-gold rounded-full animate-spin mb-4 mx-auto" />
+          <p className="font-body text-gray">Yukleniyor...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (notFound || !post) {
     return (
       <div className="min-h-screen bg-black pt-[95px] flex items-center justify-center">
         <div className="text-center">
@@ -46,10 +125,10 @@ export default function ProjectDetailPage() {
     );
   }
 
-  // Find related projects (same category, excluding current)
-  const relatedProjects = projects
-    .filter((p) => p.category === project.category && p.id !== project.id)
-    .slice(0, 3);
+  const project = wpPostToProject(post);
+  const categoryNames = getPostCategoryNames(post);
+  const tagNames = getPostTagNames(post);
+  const mockMode = isMockMode();
 
   return (
     <div className="min-h-screen bg-black pt-[95px]">
@@ -58,8 +137,8 @@ export default function ProjectDetailPage() {
         {/* Hero Image */}
         <div className="relative w-full h-[50vh] lg:h-[60vh]">
           <Image
-            src={project.image}
-            alt={project.title}
+            src={post.featured_media}
+            alt={post.title.rendered}
             fill
             className="object-cover"
             priority
@@ -93,12 +172,23 @@ export default function ProjectDetailPage() {
               transition={{ duration: 0.5, delay: 0.1 }}
               className="flex flex-wrap gap-3 mb-4"
             >
-              <span className="px-4 py-2 bg-gold text-black font-body font-semibold text-sm rounded-full">
-                {project.category}
-              </span>
+              {categoryNames.map((cat) => (
+                <span
+                  key={cat}
+                  className="px-4 py-2 bg-gold text-black font-body font-semibold text-sm rounded-full"
+                >
+                  {cat}
+                </span>
+              ))}
               <span className="px-4 py-2 bg-green/90 text-white font-body font-bold text-sm rounded-full">
                 {project.powerGain}
               </span>
+              {mockMode && (
+                <span className="px-4 py-2 bg-white/10 text-white font-body text-sm rounded-full flex items-center gap-2">
+                  <Database size={14} />
+                  Mock Data
+                </span>
+              )}
             </motion.div>
 
             {/* Title */}
@@ -108,18 +198,34 @@ export default function ProjectDetailPage() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="font-heading font-bold text-white text-4xl lg:text-6xl mb-4"
             >
-              {project.title}
+              {post.title.rendered}
             </motion.h1>
 
-            {/* Date */}
+            {/* Meta Info */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.3 }}
-              className="flex items-center gap-2 text-gray"
+              className="flex flex-wrap items-center gap-6 text-gray"
             >
-              <Calendar size={18} />
-              <span className="font-body">{project.date}</span>
+              <div className="flex items-center gap-2">
+                <Calendar size={18} />
+                <span className="font-body">{formatPostDate(post.date)}</span>
+              </div>
+              {post.meta.customer_rating && (
+                <div className="flex items-center gap-2">
+                  <Star size={18} className="text-gold fill-gold" />
+                  <span className="font-body">{post.meta.customer_rating}/5</span>
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <button className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors">
+                  <Share2 size={18} />
+                </button>
+                <button className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors">
+                  <Bookmark size={18} />
+                </button>
+              </div>
             </motion.div>
           </div>
         </div>
@@ -140,9 +246,10 @@ export default function ProjectDetailPage() {
                 <h2 className="font-heading font-bold text-white text-2xl lg:text-3xl mb-4">
                   Proje <span className="text-gold">Hakkinda</span>
                 </h2>
-                <p className="font-body text-gray text-lg leading-relaxed">
-                  {project.description}
-                </p>
+                <div
+                  className="font-body text-gray text-lg leading-relaxed prose prose-invert max-w-none"
+                  dangerouslySetInnerHTML={{ __html: post.content.rendered }}
+                />
               </motion.div>
 
               {/* Power Stats Card */}
@@ -189,7 +296,7 @@ export default function ProjectDetailPage() {
               </motion.div>
 
               {/* Work Done */}
-              {project.details?.workDone && (
+              {project.details?.workDone && project.details.workDone.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -205,7 +312,10 @@ export default function ProjectDetailPage() {
                         key={index}
                         className="flex items-start gap-3 p-4 bg-dark-card border border-dark-border rounded-xl"
                       >
-                        <CheckCircle className="text-gold flex-shrink-0 mt-0.5" size={20} />
+                        <CheckCircle
+                          className="text-gold flex-shrink-0 mt-0.5"
+                          size={20}
+                        />
                         <span className="font-body text-white">{work}</span>
                       </div>
                     ))}
@@ -225,19 +335,58 @@ export default function ProjectDetailPage() {
                   <p className="font-body text-white text-lg lg:text-xl leading-relaxed italic mb-6">
                     &quot;{project.details.customerReview}&quot;
                   </p>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
-                      <span className="font-heading font-bold text-gold text-lg">
-                        {project.title.charAt(0)}
-                      </span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
+                        <span className="font-heading font-bold text-gold text-lg">
+                          {post.title.rendered.charAt(0)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-body font-semibold text-white">
+                          {post.title.rendered} Sahibi
+                        </p>
+                        <p className="font-body text-gray text-sm">
+                          Dogrulanmis Musteri
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-body font-semibold text-white">
-                        {project.title} Sahibi
-                      </p>
-                      <p className="font-body text-gray text-sm">Dogrulanmis Musteri</p>
-                    </div>
+                    {post.meta.customer_rating && (
+                      <div className="flex items-center gap-1">
+                        {[...Array(5)].map((_, i) => (
+                          <Star
+                            key={i}
+                            size={20}
+                            className={
+                              i < post.meta.customer_rating!
+                                ? "text-gold fill-gold"
+                                : "text-gray"
+                            }
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
+                </motion.div>
+              )}
+
+              {/* Tags */}
+              {tagNames.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.8 }}
+                  className="flex items-center gap-3 flex-wrap"
+                >
+                  <Tag className="text-gray" size={18} />
+                  {tagNames.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-3 py-1.5 bg-white/5 text-gray font-body text-sm rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+                    >
+                      #{tag}
+                    </span>
+                  ))}
                 </motion.div>
               )}
             </div>
@@ -324,7 +473,9 @@ export default function ProjectDetailPage() {
 
                 {/* Services Tags */}
                 <div className="mt-6 pt-6 border-t border-dark-border">
-                  <p className="font-body text-gray text-sm mb-3">Uygulanan Hizmetler</p>
+                  <p className="font-body text-gray text-sm mb-3">
+                    Uygulanan Hizmetler
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {project.services.map((service) => (
                       <span
@@ -353,7 +504,7 @@ export default function ProjectDetailPage() {
       </section>
 
       {/* Related Projects */}
-      {relatedProjects.length > 0 && (
+      {relatedPosts.length > 0 && (
         <section className="w-full py-16 lg:py-24 border-t border-dark-border">
           <div className="max-w-[1920px] mx-auto px-6 lg:px-[121px]">
             <motion.div
@@ -367,7 +518,7 @@ export default function ProjectDetailPage() {
                   Benzer <span className="text-gold">Projeler</span>
                 </h2>
                 <p className="font-body text-gray">
-                  {project.category} kategorisindeki diger projelerimiz
+                  {categoryNames[0]} kategorisindeki diger projelerimiz
                 </p>
               </div>
               <Link
@@ -380,56 +531,63 @@ export default function ProjectDetailPage() {
             </motion.div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {relatedProjects.map((relatedProject, index) => (
-                <motion.article
-                  key={relatedProject.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: 0.1 * index }}
-                  className="group bg-dark-card border border-dark-border rounded-2xl overflow-hidden hover:border-gold/30 transition-all duration-500"
-                >
-                  <Link href={`/projeler/${relatedProject.slug}`}>
-                    {/* Image */}
-                    <div className="relative aspect-[16/10] overflow-hidden">
-                      <Image
-                        src={relatedProject.image}
-                        alt={relatedProject.title}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-700"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+              {relatedPosts.map((relatedPost, index) => {
+                const relatedProject = wpPostToProject(relatedPost);
 
-                      {/* Power Gain Badge */}
-                      <div className="absolute top-4 right-4">
-                        <span className="px-3 py-1.5 bg-green/90 text-white font-body font-bold text-xs rounded-full">
-                          {relatedProject.powerGain}
+                return (
+                  <motion.article
+                    key={relatedPost.id}
+                    initial={{ opacity: 0, y: 30 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: 0.1 * index }}
+                    className="group bg-dark-card border border-dark-border rounded-2xl overflow-hidden hover:border-gold/30 transition-all duration-500"
+                  >
+                    <Link href={`/projeler/${relatedPost.slug}`}>
+                      {/* Image */}
+                      <div className="relative aspect-[16/10] overflow-hidden">
+                        <Image
+                          src={relatedPost.featured_media}
+                          alt={relatedPost.title.rendered}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform duration-700"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+
+                        {/* Power Gain Badge */}
+                        <div className="absolute top-4 right-4">
+                          <span className="px-3 py-1.5 bg-green/90 text-white font-body font-bold text-xs rounded-full">
+                            {relatedProject.powerGain}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Content */}
+                      <div className="p-6">
+                        <h3 className="font-heading font-bold text-white text-xl mb-2 group-hover:text-gold transition-colors duration-300">
+                          {relatedPost.title.rendered}
+                        </h3>
+                        <div className="flex items-center gap-3 mb-4">
+                          <span className="font-body text-gray text-sm">
+                            {relatedProject.originalPower}
+                          </span>
+                          <span className="text-gold">→</span>
+                          <span className="font-body font-bold text-gold text-sm">
+                            {relatedProject.newPower}
+                          </span>
+                        </div>
+                        <span className="inline-flex items-center gap-2 text-gold font-body font-semibold text-sm">
+                          Detaylari Gor
+                          <ChevronRight
+                            size={16}
+                            className="group-hover:translate-x-1 transition-transform"
+                          />
                         </span>
                       </div>
-                    </div>
-
-                    {/* Content */}
-                    <div className="p-6">
-                      <h3 className="font-heading font-bold text-white text-xl mb-2 group-hover:text-gold transition-colors duration-300">
-                        {relatedProject.title}
-                      </h3>
-                      <div className="flex items-center gap-3 mb-4">
-                        <span className="font-body text-gray text-sm">
-                          {relatedProject.originalPower}
-                        </span>
-                        <span className="text-gold">→</span>
-                        <span className="font-body font-bold text-gold text-sm">
-                          {relatedProject.newPower}
-                        </span>
-                      </div>
-                      <span className="inline-flex items-center gap-2 text-gold font-body font-semibold text-sm">
-                        Detaylari Gor
-                        <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
-                      </span>
-                    </div>
-                  </Link>
-                </motion.article>
-              ))}
+                    </Link>
+                  </motion.article>
+                );
+              })}
             </div>
           </div>
         </section>
