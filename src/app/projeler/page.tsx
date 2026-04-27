@@ -73,6 +73,20 @@ export default function ProjectsPage() {
     <div className="min-h-screen bg-black pt-[95px]">
       {/* Hero Section */}
       <section className="relative w-full py-16 lg:py-24 overflow-hidden">
+        {/* Background Image */}
+        <Image
+          src="/images/hero-bg.png"
+          alt="RS Garage Projeler"
+          fill
+          className="object-cover"
+          priority
+          quality={90}
+        />
+        
+        {/* Gradient Overlays */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-black/60" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/50" />
+        
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-5">
           <div
